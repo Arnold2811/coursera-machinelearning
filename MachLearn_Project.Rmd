@@ -1,0 +1,147 @@
+---
+title: "Coursera Machine Learning Project"
+author: "M.A.R.R"
+date: "2/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls())                # free up memory for download of the data sets
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+This is the final output for the Coursera Module Machine Learning in R. This output was generated using RStudio and its knitr function. The output of this analysis will be used to answer the 20-item quiz.
+
+The algorithm described below is applied to the 20 test cases.
+
+# Data Loading 
+The dataset which corresponds to the "training data" is available in this link:  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The dataset which corresponds to the "test data" is available in this link:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project is sourced from: http://groupware.les.inf.puc-rio.br/har
+
+
+```{r loading, echo=FALSE}
+suppressMessages(library (caret))
+suppressMessages(library (ggplot2))
+suppressMessages(library (lattice))
+suppressMessages(library (rattle))
+suppressMessages(library (rpart.plot))
+suppressMessages(library (kernlab))
+suppressMessages(library (randomForest))
+suppressMessages(library (MASS))
+suppressMessages(library (corrplot))
+
+setwd("C:/Users/ma.r.ratio/Documents/projects/datasciencecoursera/MachLearn_Project1")
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+PmlTraining <- read.csv("pml-training.csv", header = TRUE, sep = ",", dec = ".", na.strings=c("NA","#DIV/0!",""))
+pmlTesting <- read.csv("pml-testing.csv", header = TRUE, sep = ",", dec = ".", na.strings=c("NA","#DIV/0!",""))
+```
+
+
+# Data Wrangling
+```{r wrangling, echo=TRUE}
+#Removal of Near Zero Variance is done
+nzv <- nearZeroVar(PmlTraining, saveMetrics = TRUE)
+PmlTraining <- PmlTraining[, nzv$nzv==FALSE]
+Good <- names(which(colSums(is.na(PmlTraining)) ==0))
+PmlTraining1 <- subset(PmlTraining, select = Good)
+
+#Columns 1 to 7 will be removed since they are identification variables only
+Training1 <- PmlTraining1[,-c(1:7)]
+
+#set all variables as numeric class with exception of classe variable
+Training1[, 1:51] <- lapply(Training1[, 1:51], as.numeric)
+
+dim(Training1)
+
+#Preparation of training set and test set
+set.seed(1967)
+inTrain <- createDataPartition(y=Training1$classe, p=0.75, list=FALSE)
+train_set <- Training1[inTrain,]; test_set <- Training1[-inTrain,]
+dim(train_set);dim(test_set)
+```
+
+
+# Exploratory Data Analysis
+Preliminary analysis is conducted using Correlation Analysis prior to selection of model to explain the dataset.
+The dataset is trimmed from 160 variables down to 54 variables.
+
+```{r correlation, echo=FALSE}
+corr_matrix <- cor(train_set[ , -52])
+corrplot(corr_matrix, order = "FPC", method = "circle", type = "lower",tl.cex = 0.6, tl.col = rgb(0, 0, 0))
+```
+
+# Regression Model
+Three models were applied to analyze the regression in the Train dataset. The model with highest accuracy will be used to the Test dataset for the quiz.
+These models are:
++ Decision Tree
++ Generalized Boosted Model
++ Random Forests
+
+## Decision Tree
+The Decision Tree Model has accuracy at 61.46%.
+```{r tree, echo=FALSE}
+set.seed(1967)
+control <- trainControl(method = "cv", number = 10)
+metric <- "Accuracy"
+fittree <- train(classe~., method = "rpart", data = train_set, metric = "Accuracy", trControl = control)
+fancyRpartPlot(fittree$finalModel)
+pred1 <- predict(fittree, test_set)
+conf_matrix_DT <- confusionMatrix(table(pred1, test_set$classe))
+conf_matrix_DT
+plot(conf_matrix_DT$table, col = conf_matrix_DT$byClass, 
+     main = paste("Decision Tree Model: Predictive Accuracy =",
+                  round(conf_matrix_DT$overall['Accuracy'], 4)))
+```
+
+## Generalized Boosted Model
+The Generalized Boosted Model has better accuracy at 96%.
+```{r gbm, echo=TRUE}
+set.seed(1967)
+ctrl_GBM <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+fit_GBM  <- train(classe ~ ., data = train_set, method = "gbm",
+                  trControl = ctrl_GBM, verbose = FALSE)
+fit_GBM$finalModel
+
+predict_GBM <- predict(fit_GBM, newdata = test_set)
+conf_matrix_GBM <- confusionMatrix(table(predict_GBM, test_set$classe))
+conf_matrix_GBM
+```
+
+## Random Forest
+The Random Forest has the highest accuracy at 99.41%.
+```{r rf, echo=TRUE}
+set.seed(1967)
+ctrl_RF <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+fit_RF  <- train(classe ~ ., data = train_set, method = "rf",trControl = ctrl_RF, verbose = FALSE)
+fit_RF$finalModel
+predict_RF <- predict(fit_RF, newdata = test_set)
+conf_matrix_RF <- confusionMatrix(table(predict_RF, test_set$classe))
+conf_matrix_RF
+plot(fit_RF)
+```
+
+The accuracy has plateaued, and further tuning would only yield improvement in decimal values.
+
+# Summary and Conclusion
+The Random Forest Method shows the highest accuracy of 99.41% compared to the Decision Tree and Generalized Boosted Model. This may be due to the fact that many predictors are highly correlated. The Random Forest chooses a subset of predictors at each split and decorrelate the trees. This leads to high accuracy, although this algorithm is sometimes difficult to interpret and computationally inefficient.
+
+
+# Applying the Random Forest Prediction to the Quiz Data
+Using the prediction generated by the Random Forest Model, a prediction on the "quiz" (testing) dataset will be conducted.
+```{r}
+pmlTesting <- pmlTesting[, colSums(is.na(pmlTesting)) ==0]
+pmlTesting <- pmlTesting[,-c(1:7)]
+
+fitprediction <- predict(fit_RF, pmlTesting)
+fitprediction
+```
+
+
+
